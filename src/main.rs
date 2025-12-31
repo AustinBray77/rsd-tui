@@ -1,4 +1,4 @@
-use std::{fs::File, io::Read};
+use std::{fs::File, io::Read, path::PathBuf};
 
 use arboard;
 use rpassword;
@@ -37,7 +37,9 @@ fn parse_contents(contents: String) -> AnyResult<Vec<Account>> {
 // TODO: Possibly move to better error handling
 // I feel like panicing in main is probably fine tho
 fn main() {
-    let src_path: &str = "/home/aus/Documents/psd.bin";
+    let src_path: PathBuf = dirs::home_dir()
+        .expect("Expected home dir to exist")
+        .join(".local/share/rsd-tui/psd.bin");
 
     let mut src_file = File::open(src_path).expect("Expected file to exist, panicing...");
 
@@ -49,6 +51,7 @@ fn main() {
 
     let contents = decrypt_contents(enc_contents).expect("Unable to decrypt the file");
 
+    // TODO: Handle empty case better when the TUI is upgraded
     let accounts: Box<[Account]> = parse_contents(contents)
         .expect("Unable to parse decrypted file")
         .into();
