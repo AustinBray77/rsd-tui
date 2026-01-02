@@ -1,6 +1,7 @@
 use std::{error::Error, fmt::Display};
 
 use arboard::Clipboard;
+use ratatui::text::Line;
 
 #[allow(non_snake_case)] // Allowed due to the way the old files are serialized
 #[derive(serde::Deserialize)]

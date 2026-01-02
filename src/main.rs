@@ -1,6 +1,8 @@
 use std::{fs::File, io::Read, path::PathBuf};
 
 use arboard;
+use crossterm::event;
+use ratatui::{style::Color, style::Style, text::Span};
 use rpassword;
 use rsd_encrypt::legacy_decrypt;
 mod io;
@@ -34,9 +36,28 @@ fn parse_contents(contents: String) -> AnyResult<Vec<Account>> {
         .collect())
 }
 
+fn main() -> std::io::Result<()> {
+    ratatui::run(|terminal| {
+        loop {
+            terminal.draw(|frame| {
+                frame.render_widget(
+                    Span::styled("RSD-TUI", Style::default().fg(Color::Blue)),
+                    frame.area(),
+                );
+
+                //frame.render_widget("Enter Password:", frame.area());
+            })?;
+
+            if event::read()?.is_key_press() {
+                break Ok(());
+            }
+        }
+    })
+}
+
 // TODO: Possibly move to better error handling
 // I feel like panicing in main is probably fine tho
-fn main() {
+/*fn main() {
     let src_path: PathBuf = dirs::home_dir()
         .expect("Expected home dir to exist")
         .join(".local/share/rsd-tui/psd.bin");
@@ -71,4 +92,4 @@ fn main() {
     account.copy_pass(clipboard);
 
     println!("Copied password for {} to clipboard.", account);
-}
+}*/

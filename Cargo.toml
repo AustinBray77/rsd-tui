@@ -5,7 +5,9 @@ edition = "2024"
 
 [dependencies]
 arboard = "3.6.1"
+crossterm = "0.29.0"
 dirs = "6.0.0"
+ratatui = "0.30.0"
 rpassword = "7.4.0"
 rsd-encrypt = { version = "0.1.0", git = "ssh://git@github.com/AustinBray77/RSD-Encryptor.git" } 
 serde = { version= "1.0.228", features=["derive"] }
