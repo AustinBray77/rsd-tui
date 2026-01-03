@@ -1,30 +1,18 @@
 use std::{fs::File, io::Read, path::PathBuf};
 
-use arboard;
-use crossterm::event;
-use ratatui::{style::Color, style::Style, text::Span};
-use rpassword;
+use crossterm::event::{self, Event::Key, KeyCode, KeyEvent};
 use rsd_encrypt::legacy_decrypt;
 mod io;
 mod types;
-
-use io::read_u32;
+mod ui;
 use types::AnyResult;
 
 use crate::types::{Account, JsonAccount};
 
-fn decrypt_contents(contents: String) -> AnyResult<String> {
-    println!("Enter password:");
-
-    let encryption_key = rpassword::read_password()?;
-
+fn decrypt_contents(contents: String, key: String) -> AnyResult<String> {
     // TODO: Modify the rsd_encrypt crate so the Error impl std::error::Error
     // Will allow me to get rid of this expect
-    Ok(legacy_decrypt(contents, encryption_key).expect("Unable to decrypt the file"))
-}
-
-fn print_account((ind, account): (usize, &Account)) {
-    println!("{}) {}", ind, account);
+    Ok(legacy_decrypt(contents, key).expect("Unable to decrypt the file"))
 }
 
 fn parse_contents(contents: String) -> AnyResult<Vec<Account>> {
@@ -36,20 +24,115 @@ fn parse_contents(contents: String) -> AnyResult<Vec<Account>> {
         .collect())
 }
 
+fn load_accounts(password: String) -> AnyResult<Vec<Account>> {
+    let src_path: PathBuf = dirs::home_dir()
+        .ok_or("Home_dir does not exist")?
+        .join(".local/share/rsd-tui/psd.bin");
+
+    let mut src_file = File::open(src_path)?;
+
+    let mut enc_contents = String::new();
+
+    src_file.read_to_string(&mut enc_contents)?;
+
+    let contents = decrypt_contents(enc_contents, password)?;
+
+    // TODO: Handle empty case better when the TUI is upgraded
+    let accounts: Vec<Account> = parse_contents(contents)?;
+
+    Ok(accounts)
+}
+
+enum AppState {
+    Login {
+        psd: String,
+        alert: Option<String>,
+    },
+    MainScreen {
+        accounts: Vec<Account>,
+        selected: usize,
+    },
+    Exit,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self::Login {
+            psd: String::new(),
+            alert: None,
+        }
+    }
+}
+
+fn handle_input(state: AppState, key_event: KeyEvent) -> AppState {
+    match state {
+        AppState::Login { mut psd, alert } => match key_event.code {
+            KeyCode::Enter => match load_accounts(psd.clone()) {
+                Ok(accounts) => AppState::MainScreen {
+                    accounts,
+                    selected: 0,
+                },
+                Err(err) => {
+                    psd.clear();
+                    AppState::Login {
+                        psd,
+                        alert: Some(err.to_string()),
+                    }
+                }
+            },
+            KeyCode::Backspace => {
+                let _ = psd.pop();
+                AppState::Login { psd, alert }
+            }
+            KeyCode::Char(c) => {
+                psd.push(c);
+                AppState::Login { psd, alert }
+            }
+            KeyCode::Esc => AppState::Exit,
+            _ => AppState::Login { psd, alert },
+        },
+        AppState::MainScreen { accounts, selected } => match key_event.code {
+            KeyCode::Enter => AppState::MainScreen { accounts, selected },
+            KeyCode::Up => {
+                let new_selected = if selected == 0 {
+                    accounts.len() - 1
+                } else {
+                    selected - 1
+                };
+
+                AppState::MainScreen {
+                    accounts,
+                    selected: new_selected,
+                }
+            }
+            KeyCode::Down => {
+                let new_selected = (selected + 1) % accounts.len();
+                AppState::MainScreen {
+                    accounts,
+                    selected: new_selected,
+                }
+            }
+            KeyCode::Esc => AppState::Exit,
+            _ => AppState::MainScreen { accounts, selected },
+        },
+        _ => state,
+    }
+}
+
 fn main() -> std::io::Result<()> {
+    let mut state = AppState::default();
+
     ratatui::run(|terminal| {
         loop {
-            terminal.draw(|frame| {
-                frame.render_widget(
-                    Span::styled("RSD-TUI", Style::default().fg(Color::Blue)),
-                    frame.area(),
-                );
-
-                //frame.render_widget("Enter Password:", frame.area());
-            })?;
-
-            if event::read()?.is_key_press() {
+            if let AppState::Exit = state {
                 break Ok(());
+            }
+
+            terminal.draw(|frame| crate::ui::render_ui(frame, &state))?;
+
+            state = match event::read()? {
+                Key(key_event) => handle_input(state, key_event),
+                _ => state,
             }
         }
     })
