@@ -21,7 +21,11 @@ pub fn render_ui(frame: &mut Frame<'_>, state: &AppState) {
                 None => [password_prompt].into(),
             }
         }
-        AppState::MainScreen { accounts, selected } => accounts
+        AppState::MainScreen {
+            clipboard: _clipboard,
+            accounts,
+            selected,
+        } => accounts
             .iter()
             .enumerate()
             .map(|(index, account): (usize, &Account)| {

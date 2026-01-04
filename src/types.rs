@@ -15,9 +15,11 @@ pub struct Account {
 }
 
 impl Account {
-    pub fn copy_pass(&self, mut clip: Clipboard) {
+    pub fn copy_pass(&self, mut clip: Clipboard) -> Clipboard {
         clip.set_text(self.password.clone())
             .expect("Unable to copy value to clipboard");
+
+        clip
     }
 }
 

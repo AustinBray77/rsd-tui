@@ -1,5 +1,6 @@
 use std::{fs::File, io::Read, path::PathBuf};
 
+use arboard::Clipboard;
 use crossterm::event::{self, Event::Key, KeyCode, KeyEvent};
 use rsd_encrypt::legacy_decrypt;
 mod io;
@@ -47,6 +48,7 @@ enum AppState {
         alert: Option<String>,
     },
     MainScreen {
+        clipboard: Clipboard,
         accounts: Vec<Account>,
         selected: usize,
     },
@@ -66,15 +68,25 @@ fn handle_input(state: AppState, key_event: KeyEvent) -> AppState {
     match state {
         AppState::Login { mut psd, alert } => match key_event.code {
             KeyCode::Enter => match load_accounts(psd.clone()) {
-                Ok(accounts) => AppState::MainScreen {
-                    accounts,
-                    selected: 0,
+                Ok(accounts) => match Clipboard::new() {
+                    Ok(clipboard) => AppState::MainScreen {
+                        clipboard,
+                        accounts,
+                        selected: 0,
+                    },
+                    Err(err) => {
+                        psd.clear();
+                        AppState::Login {
+                            psd,
+                            alert: Some(format!("Clipboard initialization failed: {}", err)),
+                        }
+                    }
                 },
                 Err(err) => {
                     psd.clear();
                     AppState::Login {
                         psd,
-                        alert: Some(err.to_string()),
+                        alert: Some(format!("Password likely incorrect, error: {}", err)),
                     }
                 }
             },
@@ -89,8 +101,16 @@ fn handle_input(state: AppState, key_event: KeyEvent) -> AppState {
             KeyCode::Esc => AppState::Exit,
             _ => AppState::Login { psd, alert },
         },
-        AppState::MainScreen { accounts, selected } => match key_event.code {
-            KeyCode::Enter => AppState::MainScreen { accounts, selected },
+        AppState::MainScreen {
+            clipboard,
+            accounts,
+            selected,
+        } => match key_event.code {
+            KeyCode::Enter => AppState::MainScreen {
+                clipboard,
+                accounts,
+                selected,
+            },
             KeyCode::Up => {
                 let new_selected = if selected == 0 {
                     accounts.len() - 1
@@ -99,6 +119,7 @@ fn handle_input(state: AppState, key_event: KeyEvent) -> AppState {
                 };
 
                 AppState::MainScreen {
+                    clipboard,
                     accounts,
                     selected: new_selected,
                 }
@@ -106,12 +127,22 @@ fn handle_input(state: AppState, key_event: KeyEvent) -> AppState {
             KeyCode::Down => {
                 let new_selected = (selected + 1) % accounts.len();
                 AppState::MainScreen {
+                    clipboard,
                     accounts,
                     selected: new_selected,
                 }
             }
+            KeyCode::Char('c') => AppState::MainScreen {
+                clipboard: accounts[selected].copy_pass(clipboard),
+                accounts,
+                selected,
+            },
             KeyCode::Esc => AppState::Exit,
-            _ => AppState::MainScreen { accounts, selected },
+            _ => AppState::MainScreen {
+                clipboard,
+                accounts,
+                selected,
+            },
         },
         _ => state,
     }
