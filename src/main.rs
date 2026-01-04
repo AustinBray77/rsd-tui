@@ -10,9 +10,7 @@ use types::AnyResult;
 use crate::types::{Account, JsonAccount};
 
 fn decrypt_contents(contents: String, key: String) -> AnyResult<String> {
-    // TODO: Modify the rsd_encrypt crate so the Error impl std::error::Error
-    // Will allow me to get rid of this expect
-    Ok(legacy_decrypt(contents, key).expect("Unable to decrypt the file"))
+    Ok(legacy_decrypt(contents, key)?)
 }
 
 fn parse_contents(contents: String) -> AnyResult<Vec<Account>> {
