@@ -12,7 +12,7 @@ pub fn render_ui(frame: &mut Frame<'_>, state: &AppState) {
     let alert_style: Style = Style::default().fg(Color::Red);
 
     let content: Box<[Line]> = match state {
-        AppState::Login { psd, alert } => {
+        AppState::Login { psd: _psd, alert } => {
             let password_prompt: Line<'_> =
                 Span::styled("Enter password: ", Style::default()).into();
 
@@ -33,7 +33,7 @@ pub fn render_ui(frame: &mut Frame<'_>, state: &AppState) {
 
                 Span::styled(format!("{}) {}", index, account), style)
             })
-            .map(Into::into)
+            .map(Into::<Line>::into)
             .collect::<Box<[Line]>>(),
         AppState::Exit => [Span::styled("Exiting...", Style::default()).into()].into(),
     };
