@@ -1,14 +1,18 @@
-use std::{fs::File, io::Read, path::PathBuf};
+use std::{error::Error, fs::File, io::Read, path::PathBuf};
 
 use arboard::Clipboard;
 use crossterm::event::{self, Event::Key, KeyCode, KeyEvent};
 use rsd_encrypt::legacy_decrypt;
-mod io;
-mod types;
+mod account;
+mod state;
 mod ui;
-use types::AnyResult;
 
-use crate::types::{Account, JsonAccount};
+pub type AnyResult<T> = Result<T, Box<dyn Error>>;
+
+use crate::{
+    account::{Account, JsonAccount},
+    state::{AccountCommands, AppState, UserMessage},
+};
 
 fn decrypt_contents(contents: String, key: String) -> AnyResult<String> {
     Ok(legacy_decrypt(contents, key)?)
@@ -42,43 +46,26 @@ fn load_accounts(password: String) -> AnyResult<Vec<Account>> {
     Ok(accounts)
 }
 
-enum AppState {
-    Login {
-        psd: String,
-        alert: Option<String>,
-    },
-    MainScreen {
-        clipboard: Clipboard,
-        accounts: Vec<Account>,
-        selected: usize,
-    },
-    Exit,
-}
-
-impl Default for AppState {
-    fn default() -> Self {
-        Self::Login {
-            psd: String::new(),
-            alert: None,
-        }
-    }
-}
-
 fn handle_input(state: AppState, key_event: KeyEvent) -> AppState {
     match state {
-        AppState::Login { mut psd, alert } => match key_event.code {
+        AppState::Login { mut psd, message } => match key_event.code {
             KeyCode::Enter => match load_accounts(psd.clone()) {
                 Ok(accounts) => match Clipboard::new() {
                     Ok(clipboard) => AppState::MainScreen {
                         clipboard,
                         accounts,
-                        selected: 0,
+                        hovering: 0,
+                        selected_command: None,
+                        message: None,
                     },
                     Err(err) => {
                         psd.clear();
                         AppState::Login {
                             psd,
-                            alert: Some(format!("Clipboard initialization failed: {}", err)),
+                            message: Some(UserMessage::Error(format!(
+                                "Clipboard initialization failed: {}",
+                                err
+                            ))),
                         }
                     }
                 },
@@ -86,62 +73,168 @@ fn handle_input(state: AppState, key_event: KeyEvent) -> AppState {
                     psd.clear();
                     AppState::Login {
                         psd,
-                        alert: Some(format!("Password likely incorrect, error: {}", err)),
+                        message: Some(UserMessage::Error(format!(
+                            "Password likely incorrect, error: {}",
+                            err
+                        ))),
                     }
                 }
             },
             KeyCode::Backspace => {
                 let _ = psd.pop();
-                AppState::Login { psd, alert }
+                AppState::Login { psd, message }
             }
             KeyCode::Char(c) => {
                 psd.push(c);
-                AppState::Login { psd, alert }
+                AppState::Login { psd, message }
             }
             KeyCode::Esc => AppState::Exit,
-            _ => AppState::Login { psd, alert },
+            _ => AppState::Login { psd, message },
         },
         AppState::MainScreen {
             clipboard,
             accounts,
-            selected,
+            hovering,
+            selected_command: None,
+            message: _message,
         } => match key_event.code {
             KeyCode::Enter => AppState::MainScreen {
                 clipboard,
                 accounts,
-                selected,
+                selected_command: Some(AccountCommands::CopyPass),
+                hovering,
+                message: None,
             },
             KeyCode::Up => {
-                let new_selected = if selected == 0 {
+                let new_hovering = if hovering == 0 {
                     accounts.len() - 1
                 } else {
-                    selected - 1
+                    hovering - 1
                 };
 
                 AppState::MainScreen {
                     clipboard,
                     accounts,
-                    selected: new_selected,
+                    hovering: new_hovering,
+                    selected_command: None,
+                    message: None,
                 }
             }
             KeyCode::Down => {
-                let new_selected = (selected + 1) % accounts.len();
+                let new_hovering = (hovering + 1) % accounts.len();
                 AppState::MainScreen {
                     clipboard,
                     accounts,
-                    selected: new_selected,
+                    hovering: new_hovering,
+                    selected_command: None,
+                    message: None,
                 }
             }
             KeyCode::Char('c') => AppState::MainScreen {
-                clipboard: accounts[selected].copy_pass(clipboard),
+                clipboard: accounts[hovering].copy_pass(clipboard),
                 accounts,
-                selected,
+                hovering,
+                selected_command: None,
+                message: None,
             },
             KeyCode::Esc => AppState::Exit,
             _ => AppState::MainScreen {
                 clipboard,
                 accounts,
-                selected,
+                hovering,
+                selected_command: None,
+                message: None,
+            },
+        },
+        AppState::MainScreen {
+            clipboard,
+            accounts,
+            selected_command: Some(command),
+            hovering,
+            message: _message,
+        } => match key_event.code {
+            KeyCode::Enter => match command {
+                AccountCommands::CopyPass => AppState::MainScreen {
+                    clipboard: accounts[hovering].copy_pass(clipboard),
+                    accounts,
+                    selected_command: Some(command),
+                    hovering,
+                    message: Some(UserMessage::Info("Copied password to clipboard!".into())),
+                },
+                AccountCommands::Edit => AppState::MainScreen {
+                    clipboard,
+                    accounts,
+                    selected_command: Some(command),
+                    hovering,
+                    message: Some(UserMessage::Error("Edit is not implemented yet!".into())),
+                },
+                AccountCommands::Delete => AppState::MainScreen {
+                    clipboard,
+                    accounts,
+                    selected_command: Some(command),
+                    hovering,
+                    message: Some(UserMessage::Error("Delete is not implemented yet!".into())),
+                },
+            },
+            KeyCode::Up => match command {
+                AccountCommands::CopyPass => AppState::MainScreen {
+                    clipboard,
+                    accounts,
+                    hovering,
+                    selected_command: Some(AccountCommands::Delete),
+                    message: None,
+                },
+                AccountCommands::Edit => AppState::MainScreen {
+                    clipboard,
+                    accounts,
+                    hovering,
+                    selected_command: Some(AccountCommands::CopyPass),
+                    message: None,
+                },
+                AccountCommands::Delete => AppState::MainScreen {
+                    clipboard,
+                    accounts,
+                    hovering,
+                    selected_command: Some(AccountCommands::Edit),
+                    message: None,
+                },
+            },
+            KeyCode::Down => match command {
+                AccountCommands::CopyPass => AppState::MainScreen {
+                    clipboard,
+                    accounts,
+                    hovering,
+                    selected_command: Some(AccountCommands::Edit),
+                    message: None,
+                },
+                AccountCommands::Edit => AppState::MainScreen {
+                    clipboard,
+                    accounts,
+                    hovering,
+                    selected_command: Some(AccountCommands::Delete),
+                    message: None,
+                },
+                AccountCommands::Delete => AppState::MainScreen {
+                    clipboard,
+                    accounts,
+                    hovering,
+                    selected_command: Some(AccountCommands::CopyPass),
+                    message: None,
+                },
+            },
+            KeyCode::Esc => AppState::MainScreen {
+                clipboard,
+                accounts,
+                hovering,
+                selected_command: None,
+                message: None,
+            },
+            _ => AppState::MainScreen {
+                clipboard,
+                accounts,
+                hovering,
+                selected_command: Some(command),
+                message: None,
             },
         },
         _ => state,

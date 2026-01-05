@@ -1,4 +1,4 @@
-use std::{error::Error, fmt::Display};
+use std::fmt::Display;
 
 use arboard::Clipboard;
 
@@ -37,4 +37,3 @@ impl Display for Account {
         write!(f, "{}", self.name)
     }
 }
-pub type AnyResult<T> = Result<T, Box<dyn Error>>;
