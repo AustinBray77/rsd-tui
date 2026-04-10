@@ -9,26 +9,30 @@ use crate::{
     AppState,
     account::Account,
     state::{COMMAND_COUNT, COMMAND_STRS, UserMessage},
+    theme::Theme,
 };
 
-pub fn render_ui(frame: &mut Frame<'_>, state: &AppState) {
-    let title: Line = Span::styled("RSD-TUI", Style::default().fg(Color::Blue)).into();
-    let alert_style: Style = Style::default().fg(Color::Red);
-    let info_style: Style = Style::default().fg(Color::Green);
-    let default_style: Style = Style::default();
-    let highlighted_style: Style = Style::default().bg(Color::White).fg(Color::Black);
+const TITLE: &'static str = "RSD-TUI";
+
+pub fn render_ui(frame: &mut Frame<'_>, state: &AppState, theme: &Theme) {
+    let alert_st: Style = theme.alert.clone().into();
+    let info_st: Style = theme.info.clone().into();
+    let main_st: Style = theme.main.clone().into();
+    let highlight_st: Style = theme.highlight.clone().into();
+    let border_st: Style = theme.border.clone().into();
+
+    let title: Line = Span::styled(TITLE, theme.title.clone()).into();
 
     let content: Box<[Line]> = match state {
         AppState::Login { psd: _psd, message } => {
-            let password_prompt: Line<'_> =
-                Span::styled("Enter password: ", Style::default()).into();
+            let password_prompt: Line<'_> = Span::styled("Enter password: ", main_st).into();
 
             match message {
                 Some(UserMessage::Error(err)) => {
-                    [password_prompt, Span::styled(err, alert_style).into()].into()
+                    [password_prompt, Span::styled(err, alert_st).into()].into()
                 }
                 Some(UserMessage::Info(info)) => {
-                    [password_prompt, Span::styled(info, info_style).into()].into()
+                    [password_prompt, Span::styled(info, info_st).into()].into()
                 }
                 None => [password_prompt].into(),
             }
@@ -42,7 +46,7 @@ pub fn render_ui(frame: &mut Frame<'_>, state: &AppState) {
         } => {
             let account_heading = Span::styled(
                 format!("For Account: {}", accounts[*hovering]),
-                default_style.clone().bold(),
+                main_st.clone(),
             );
 
             let mut lines: Vec<Line<'_>> = Vec::new();
@@ -55,9 +59,9 @@ pub fn render_ui(frame: &mut Frame<'_>, state: &AppState) {
                 .enumerate()
                 .map(|(index, command_str): (usize, &&str)| {
                     let style = if index == *command as usize {
-                        highlighted_style
+                        highlight_st.clone()
                     } else {
-                        default_style
+                        main_st.clone()
                     };
 
                     Span::styled(command_str.to_string(), style)
@@ -66,8 +70,8 @@ pub fn render_ui(frame: &mut Frame<'_>, state: &AppState) {
                 .for_each(|line| lines.push(line));
 
             match message {
-                Some(UserMessage::Error(err)) => lines.push(Span::styled(err, alert_style).into()),
-                Some(UserMessage::Info(info)) => lines.push(Span::styled(info, info_style).into()),
+                Some(UserMessage::Error(err)) => lines.push(Span::styled(err, alert_st).into()),
+                Some(UserMessage::Info(info)) => lines.push(Span::styled(info, info_st).into()),
                 _ => {}
             }
 
@@ -78,27 +82,36 @@ pub fn render_ui(frame: &mut Frame<'_>, state: &AppState) {
             accounts,
             selected_command: None,
             hovering,
-            message: _message,
+            message,
         } => accounts
             .iter()
             .enumerate()
             .map(|(index, account): (usize, &Account)| {
                 let style = if index == *hovering {
-                    highlighted_style
+                    highlight_st.clone()
                 } else {
-                    default_style
+                    main_st.clone()
                 };
 
                 Span::styled(format!("{}) {}", index, account), style)
             })
             .map(Into::<Line>::into)
+            .chain([match message {
+                Some(UserMessage::Error(err)) => Span::styled(err, alert_st).into(),
+                Some(UserMessage::Info(info)) => Span::styled(info, info_st).into(),
+                _ => Span::default(),
+            }
+            .into()])
             .collect::<Box<[Line]>>(),
         AppState::Exit => [Span::styled("Exiting...", Style::default()).into()].into(),
     };
 
     let text = Text::from([[title].as_slice(), content.iter().as_slice()].concat());
 
-    frame.render_widget(Paragraph::new(text).block(Block::bordered()), frame.area());
+    frame.render_widget(
+        Paragraph::new(text).block(Block::bordered().border_style(border_st)),
+        frame.area(),
+    );
 
     //frame.render_widget("Enter Password:", frame.area());
 }

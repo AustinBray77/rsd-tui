@@ -2,9 +2,11 @@ use std::{error::Error, fs::File, io::Read, path::PathBuf};
 
 use arboard::Clipboard;
 use crossterm::event::{self, Event::Key, KeyCode, KeyEvent};
+use ini::Ini;
 use rsd_encrypt::legacy_decrypt;
 mod account;
 mod state;
+mod theme;
 mod ui;
 
 pub type AnyResult<T> = Result<T, Box<dyn Error>>;
@@ -135,7 +137,7 @@ fn handle_input(state: AppState, key_event: KeyEvent) -> AppState {
                 accounts,
                 hovering,
                 selected_command: None,
-                message: None,
+                message: Some(UserMessage::Info("Copied password to cliboard".into())),
             },
             KeyCode::Esc => AppState::Exit,
             _ => AppState::MainScreen {
@@ -243,6 +245,9 @@ fn handle_input(state: AppState, key_event: KeyEvent) -> AppState {
 
 fn main() -> std::io::Result<()> {
     let mut state = AppState::default();
+    let conf = Ini::load_from_file("resources/conf.ini").unwrap();
+
+    let theme = theme::open_theme(conf.general_section().get("THEME").unwrap_or_default());
 
     ratatui::run(|terminal| {
         loop {
@@ -250,7 +255,7 @@ fn main() -> std::io::Result<()> {
                 break Ok(());
             }
 
-            terminal.draw(|frame| crate::ui::render_ui(frame, &state))?;
+            terminal.draw(|frame| crate::ui::render_ui(frame, &state, &theme))?;
 
             state = match event::read()? {
                 Key(key_event) => handle_input(state, key_event),
